@@ -20,7 +20,7 @@ class BASE(object):
         self._eig_val = np.ones((3, ), dtype=np.float32)
         self._eig_vec = np.zeros((3, 3), dtype=np.float32)
 
-        self._configs             = {}
+        self._configs             = {}S
         self._train_cfg           = {}
         self._model               = {}
         self._configs["data_aug"] = True
@@ -98,3 +98,5 @@ class BASE(object):
             print("shuffling indices...")
         rand_perm = self._data_rng.permutation(len(self._db_inds))
         self._db_inds = self._db_inds[rand_perm]
+        # MSCOCO inherit DETECTION, DETECTION inherit base
+        # when MSCOCO call kp_detection first time , we will shuffle the index of images in dataset.
