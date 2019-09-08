@@ -33,13 +33,28 @@ class DummyModule(nn.Module):
 
 class NetworkFactory(object):
     def __init__(self, db):
+        # db is a MSCOCO instance.
+        # and images, tl, br, center heatmaps and tl,br,center regression are all
+        # prepared into torch.Tensor
         super(NetworkFactory, self).__init__()
 
         module_file = "models.{}".format(system_configs.snapshot_name)
+        # snapshot_name check CenterNet-104.json
+        # snapshot = 5000  but snapshot_name wasn't in CenterNet-104.json
+        # snapshot_name in config.py  is None
+        # snapshot_name is set to "CenterNet-104" in train.py
+        # so here module_file = models.CenterNet-104
+        # it is to say we should go to models/CenterNet-104.py to see the classes
+
         print("module_file: {}".format(module_file))
         nnet_module = importlib.import_module(module_file)
+        # this is importing the models/CenterNet-104.py
+        # include five functions and 6 classes
 
         self.model   = DummyModule(nnet_module.model(db))
+        # nnet_module.model(db) means CenterNet-104.py class model()
+        # model inherit kp
+        #
         self.loss    = nnet_module.loss
         self.network = Network(self.model, self.loss)
         self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes).cuda()

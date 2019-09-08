@@ -142,12 +142,47 @@ def train(training_dbs, validation_db, start_iter=0):
 
     training_pin_semaphore   = threading.Semaphore()
     validation_pin_semaphore = threading.Semaphore()
+    # class threading.Semaphore([value])
+    # values是一个内部计数，values默认是1，如果小于0，则会抛出 ValueError 异常，可以用于控制线程数并发数
+    # here semaphore use default value so is 1
+    # Semaphore 是 Python 内置模块 threading 中的一个类
+    # Semaphore 管理一个计数器，每调用一次 acquire() 方法，
+    # 计数器就减一，每调用一次 release() 方法，计数器就加一。
+    # 计时器的值默认为 1 ，计数器的值不能小于 0，
+    # 当计数器的值为 0 时，调用 acquire() 的线程就会等待，直到 release() 被调用。
+    # 因此，可以利用这个特性来控制线程数量
+    # 代码示例。
+    # from threading import Thread, Semaphore
+    # import time
+    #
+    #
+    # def test(a):
+    #     #打印线程的名字
+    #     print(t.name)
+    #     print(a)
+    #     time.sleep(2)
+    #     #释放 semaphore
+    #     sem.release()
+    #
+    # #设置计数器的值为 5
+    # sem = Semaphore(5)
+    # for i in range(10):
+    #     #获取一个 semaphore
+    #     sem.acquire()
+    #     t = Thread(target=test, args=(i, ))
+    #     t.start()
     training_pin_semaphore.acquire()
     validation_pin_semaphore.acquire()
 
     training_pin_args   = (training_queue, pinned_training_queue, training_pin_semaphore)
     training_pin_thread = threading.Thread(target=pin_memory, args=training_pin_args)
+    # Python Thread类表示在单独的控制线程中运行的活动。有两种方法可以指定这种活动：
+    # 给构造函数传递回调对象：
+    # https://blog.csdn.net/drdairen/article/details/60962439
     training_pin_thread.daemon = True
+    # daemon的使用场景是：你需要一个始终运行的进程，用来监控其他服务的运行情况，
+    # 或者发送心跳包或者类似的东西，你创建了这个进程都就不用管它了，
+    # 他会随着主线程的退出出而退出了。
     training_pin_thread.start()
 
     validation_pin_args   = (validation_queue, pinned_validation_queue, validation_pin_semaphore)

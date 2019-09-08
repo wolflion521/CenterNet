@@ -13,6 +13,8 @@ from .kp_utils import _sigmoid, _ae_loss, _regr_loss, _neg_loss
 from .kp_utils import make_tl_layer, make_br_layer, make_kp_layer, make_ct_layer
 from .kp_utils import make_pool_layer, make_unpool_layer
 from .kp_utils import make_merge_layer, make_inter_layer, make_cnv_layer
+# . means the directory of kp.py file
+# .kp_utils means the kp_utils.py file in the same directory with kp.py
 
 class kp_module(nn.Module):
     def __init__(
@@ -74,6 +76,7 @@ class kp_module(nn.Module):
         return self.merge(up1, up2)
 
 class kp(nn.Module):
+    # nn.Module --> kp --> CenterNet-104.py class: model
     def __init__(
         self, db, n, nstack, dims, modules, out_dim, pre=None, cnv_dim=256, 
         make_tl_layer=make_tl_layer, make_br_layer=make_br_layer, make_ct_layer=make_ct_layer,
@@ -85,22 +88,43 @@ class kp(nn.Module):
         make_merge_layer=make_merge_layer, make_inter_layer=make_inter_layer, 
         kp_layer=residual
     ):
+
+        # train() call NetworkFactory---> CenterNet-104.py class model --> kp
+        #         n       = 5
+        #         dims    = [256, 256, 384, 384, 384, 512]
+        #         modules = [2, 2, 2, 2, 2, 4]
+        #         out_dim = 80
+        #             db, n, 2, dims, modules, out_dim,
+        #             make_tl_layer=make_tl_layer,
+        #             make_br_layer=make_br_layer,
+        #             make_ct_layer=make_ct_layer,
+        #             make_pool_layer=make_pool_layer,
+        #             make_hg_layer=make_hg_layer,
+        #             kp_layer=residual, cnv_dim=256
         super(kp, self).__init__()
 
-        self.nstack             = nstack
-        self._decode            = _decode
+        self.nstack             = nstack  # 2
+        self._decode            = _decode # a funtion in kp_utils.py
         self._db                = db
-        self.K                  = self._db.configs["top_k"]
-        self.ae_threshold       = self._db.configs["ae_threshold"]
-        self.kernel             = self._db.configs["nms_kernel"]
-        self.input_size         = self._db.configs["input_size"][0]
-        self.output_size        = self._db.configs["output_sizes"][0][0]
+        self.K                  = self._db.configs["top_k"]  # 70 in CenterNet-104.json
+        self.ae_threshold       = self._db.configs["ae_threshold"] # 0.5 in CenterNet-104.json
+        self.kernel             = self._db.configs["nms_kernel"] # 0.5 in CenterNet-104.json
+        self.input_size         = self._db.configs["input_size"][0] # [511,511] in CenterNet-104.json
+        self.output_size        = self._db.configs["output_sizes"][0][0] # [128,128] in CenterNet-104.json
 
-        curr_dim = dims[0]
+        curr_dim = dims[0] # 256
+
 
         self.pre = nn.Sequential(
             convolution(7, 3, 128, stride=2),
+            # convolution(k, inp_dim, out_dim, stride=1, with_bn=True)
+            #             k ---kernel size = 7
+            #             input dim  = 3
+            #             output channel = 128
+            # convolution  = conv + BN + relu
             residual(3, 128, 256, stride=2)
+            # residual(k, inp_dim, out_dim, stride=1, with_bn=True)
+            # residual = conv + bn + relu + conv + bn + add + relu
         ) if pre is None else pre
 
         self.kps  = nn.ModuleList([
@@ -113,7 +137,7 @@ class kp(nn.Module):
                 make_pool_layer=make_pool_layer,
                 make_unpool_layer=make_unpool_layer,
                 make_merge_layer=make_merge_layer
-            ) for _ in range(nstack)
+            ) for _ in range(nstack)    # nstack = 2
         ])
         self.cnvs = nn.ModuleList([
             make_cnv_layer(curr_dim, cnv_dim) for _ in range(nstack)
