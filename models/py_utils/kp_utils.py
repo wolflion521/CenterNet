@@ -37,6 +37,8 @@ def make_inter_layer(dim):
 
 def make_cnv_layer(inp_dim, out_dim):
     return convolution(3, inp_dim, out_dim)
+# first call
+#
 
 def _gather_feat(feat, ind, mask=None):
     dim  = feat.size(2)

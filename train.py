@@ -62,16 +62,70 @@ def prefetch_data(db, queue, sample_data, data_aug):
     #     }, k_ind.
 
 def pin_memory(data_queue, pinned_data_queue, sema):
+    # this function move the data into GPU and read them one batch after another each time
+    # say the arguments are: training_queue, pinned_training_queue, training_pin_semaphore
+    #     # training_queue is images, heatmaps,location regressions
+    #     # pinned_training_queue hasn't initialized yet, it may be initialized in later line using function pin_memory
+    #     # training_pin_semaphore is a counter
+    # so data_queue structure can be checked in kp_detection()
+    # data is a dictionary like below
+    #     {
+    #         "xs": [images, tl_tags, br_tags, ct_tags],
+    #         "ys": [tl_heatmaps, br_heatmaps, ct_heatmaps, tag_masks, tl_regrs, br_regrs, ct_regrs]
+    #     }
+    # pinned_data_queue are not initialized
+    # sema is a counter -- semaphore
     while True:
         data = data_queue.get()
+        # data is a dictionary like below
+        #     {
+        #         "xs": [images, tl_tags, br_tags, ct_tags],
+        #         "ys": [tl_heatmaps, br_heatmaps, ct_heatmaps, tag_masks, tl_regrs, br_regrs, ct_regrs]
+        #     }
+        # and all the elements in data are torch tensors.
 
         data["xs"] = [x.pin_memory() for x in data["xs"]]
         data["ys"] = [y.pin_memory() for y in data["ys"]]
+        # pin_memory就是锁页内存，创建DataLoader时，设置pin_memory=True，则意味着生成的Tensor数据最开始是属于内存中的锁页内存，这样将内存的Tensor转义到GPU的显存就会更快一些。
+        #
+        # 主机中的内存，有两种存在方式，一是锁页，二是不锁页，锁页内存存放的内容在任何情况下都不会与主机的虚拟内存进行交换（注：虚拟内存就是硬盘），而不锁页内存在主机内存不足时，数据会存放在虚拟内存中。
+        #
+        # 而显卡中的显存全部是锁页内存！
+        #
+        # 当计算机的内存充足的时候，可以设置pin_memory=True。当系统卡住，或者交换内存使用过多的时候，设置pin_memory=False。因为pin_memory与电脑硬件性能有关，pytorch开发者不能确保每一个炼丹玩家都有高端设备，因此pin_memory默认为False。
+        # ————————————————
+        # 版权声明：本文为CSDN博主「tsq292978891」的原创文章，遵循 CC 4.0 BY-SA 版权协议，转载请附上原文出处链接及本声明。
+        # 原文链接：https://blog.csdn.net/tsq292978891/article/details/80454568
+        # tensor.pin_memory(): Copies the tensor to pinned memory, if it’s not already pinned.
 
         pinned_data_queue.put(data)
+        # till this line I understand, dataqueue is reading and manipulating data in
+        # CPU, and this self defined pin_memory function is used to copy the CPU data into GPU memory
+        # pinned_data_queue share the same structure with data:
+        # data is a dictionary like below
+        #     {
+        #         "xs": [images, tl_tags, br_tags, ct_tags],
+        #         "ys": [tl_heatmaps, br_heatmaps, ct_heatmaps, tag_masks, tl_regrs, br_regrs, ct_regrs]
+        #     }
+
 
         if sema.acquire(blocking=False):
+            # acquire()  semaphore minus one ; release() semaphore plus one
+            # 每调用一次acquire()，计数器减1；每调用一次release()，计数器加1.当计数器为0时，acquire()调用被阻塞。
+            # Acquire a semaphore.
+            # When invoked without arguments: if the internal counter is larger than zero on entry,
+            # decrement it by one and return immediately. If it is zero on entry, block, waiting until
+            # some other thread has called release() to make it larger than zero. This is done with
+            # proper interlocking so that if multiple acquire() calls are blocked, release() will
+            # wake exactly one of them up. The implementation may pick one at random, so the order
+            # in which blocked threads are awakened should not be relied on. There is no return
+            # value in this case.
+            # When invoked with blocking set to false, do not block.
+            # If a call without an argument would block, return false immediately;
+            # otherwise, do the same thing as when called without arguments, and return true.
             return
+        # since this semophore is inside a while loop whose task is reading training data. so we can
+        # see this loop as a batch data
 
 def init_parallel_jobs(dbs, queue, fn, data_aug):
     # # train.py--> train()--->init_parallel_jobs
@@ -85,6 +139,9 @@ def init_parallel_jobs(dbs, queue, fn, data_aug):
     # training_dbs is a list of four MSCOCO instance, and MSCOCO instance is used for loading annotation data
     # the training_queue is a queue of 6
     # sample_data is a function
+    # Process usage:   p = Process(target = function, args = (arguments input to function))
+    # so here db is MSCOCO instance , queue is for restore the output of prefetch_data function.
+    # after after the Process start(), annotation data and images are stored in queue.
 
 
 def train(training_dbs, validation_db, start_iter=0):
@@ -112,11 +169,13 @@ def train(training_dbs, validation_db, start_iter=0):
     training_queue   = Queue(system_configs.prefetch_size)
     # prefetch_size = 6  you can find this number in CenterNet.json
     validation_queue = Queue(5)
-    #
+    # Queue is for torch.multiprocessing module to share data, manipulate data, exchange data, operate data.
+    # since torch.multiprocessing function can't return value. so the operation is using Queue
 
     # queues storing pinned data for training
     pinned_training_queue   = queue.Queue(system_configs.prefetch_size)
     pinned_validation_queue = queue.Queue(5)
+    # queue.Queue is for threading to share data
 
     # load data sampling function
     data_file   = "sample.{}".format(training_dbs[0].data)
@@ -135,9 +194,14 @@ def train(training_dbs, validation_db, start_iter=0):
     # the training_queue is a queue of 6
     # sample_data is a function
     # four thread each thread load a batch of data.images, heatmaps,  location in flattened image, fractions part of keypoints
+    # training_tasks is a list of torch.multiprocessing.Process objects,
+    # so when each Process object.start()   the original images and annotation files will be processed into
+    # the formula accord with input shape to the network
+    # data for training will be stored in training_queue
 
     if val_iter:
         validation_tasks = init_parallel_jobs([validation_db], validation_queue, sample_data, False)
+        # data for validation will be stored in validation_queue.
 
 
     training_pin_semaphore   = threading.Semaphore()
@@ -175,38 +239,48 @@ def train(training_dbs, validation_db, start_iter=0):
     validation_pin_semaphore.acquire()
 
     training_pin_args   = (training_queue, pinned_training_queue, training_pin_semaphore)
+    # training_queue is images, heatmaps,location regressions
+    # pinned_training_queue hasn't initialized yet, it may be initialized in later line using function pin_memory
+    # training_pin_semaphore is a counter
     training_pin_thread = threading.Thread(target=pin_memory, args=training_pin_args)
     # Python Thread类表示在单独的控制线程中运行的活动。有两种方法可以指定这种活动：
     # 给构造函数传递回调对象：
     # https://blog.csdn.net/drdairen/article/details/60962439
+    # target is a function
+    # args is inputs for the function
+    # the function pin_memory move the data into GPU and read them one batch after another each time
     training_pin_thread.daemon = True
     # daemon的使用场景是：你需要一个始终运行的进程，用来监控其他服务的运行情况，
     # 或者发送心跳包或者类似的东西，你创建了这个进程都就不用管它了，
     # 他会随着主线程的退出出而退出了。
+    # so this line make the thread of reading data from CPU to GPU and read them batch by batch always alive
+    # in the whole training stage
     training_pin_thread.start()
+    #
 
     validation_pin_args   = (validation_queue, pinned_validation_queue, validation_pin_semaphore)
     validation_pin_thread = threading.Thread(target=pin_memory, args=validation_pin_args)
     validation_pin_thread.daemon = True
     validation_pin_thread.start()
+    # above four lines move validation data from CPU to GPU and read in batch by batch
 
     print("building model...")
     nnet = NetworkFactory(training_dbs[0])
 
-    if pretrained_model is not None:
+    if pretrained_model is not None:# the CenterNet-104.json set pretrained model to None so these code skip
         if not os.path.exists(pretrained_model):
             raise ValueError("pretrained model does not exist")
         print("loading from pretrained model")
         nnet.load_pretrained_params(pretrained_model)
 
-    if start_iter:
+    if start_iter: # start_iter is 0
         learning_rate /= (decay_rate ** (start_iter // stepsize))
 
         nnet.load_params(start_iter)
         nnet.set_lr(learning_rate)
         print("training starts from iteration {} with learning_rate {}".format(start_iter + 1, learning_rate))
     else:
-        nnet.set_lr(learning_rate)
+        nnet.set_lr(learning_rate)# set the learning rate to 0.00025
 
     print("training start...")
     nnet.cuda()

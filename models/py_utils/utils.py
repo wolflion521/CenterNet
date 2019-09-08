@@ -65,6 +65,20 @@ def make_layer(k, inp_dim, out_dim, modules, layer=convolution, **kwargs):
     for _ in range(1, modules):
         layers.append(layer(k, out_dim, out_dim, **kwargs))
     return nn.Sequential(*layers)
+    # first call:
+    # train.py :      nnet = NetworkFactory
+    # NetworkFactory inherited from kp
+    # kp contains two kp_module part
+    # kp_module.up1 is the output of make_layer function
+    # with the arguments: self.up1  = make_up_layer(# from .utils import make_layer
+    #             3, curr_dim, curr_dim, curr_mod,
+    #             #  256       256       2
+    #             layer=layer, **kwargs
+    #             #  residual
+    #         )
+    # so here k = 3,input_dim = 256 , out_dim =256,modules = 2, layer = residual.
+    # so the output of this function is a nn.Sequential with two residual blocks
+    # whose kernel-sizes are (3,3) and input,output channels are 256
 
 def make_layer_revr(k, inp_dim, out_dim, modules, layer=convolution, **kwargs):
     layers = []
@@ -72,3 +86,10 @@ def make_layer_revr(k, inp_dim, out_dim, modules, layer=convolution, **kwargs):
         layers.append(layer(k, inp_dim, inp_dim, **kwargs))
     layers.append(layer(k, inp_dim, out_dim, **kwargs))
     return nn.Sequential(*layers)
+# first call
+# train.py :      nnet = NetworkFactory
+# NetworkFactory inherited from kp
+# kp contains two kp_module part
+# kp_module.low3 is the output of make_layer_revr() function
+# args : 3, 256,256,2,residual
+# so the output of make_layer_revr is just two residual blocks with the kernel size of 3, input , output channels 256

@@ -17,6 +17,29 @@ from .kp_utils import make_merge_layer, make_inter_layer, make_cnv_layer
 # .kp_utils means the kp_utils.py file in the same directory with kp.py
 
 class kp_module(nn.Module):
+    # this module is call in class kp
+    # the arguments:
+    # kp_module(
+    #                 n, dims, modules, layer=kp_layer,
+    #                 # n =5
+    #                 # dims    = [256, 256, 384, 384, 384, 512]
+    #                 # modules = [2, 2, 2, 2, 2, 4]
+    #                 # kp_layer is resisual as default argument
+    #                 make_up_layer=make_up_layer,# from .utils import make_layer
+    #                 make_low_layer=make_low_layer,# from .utils import make_layer
+    #                 make_hg_layer=make_hg_layer,# default is  .utils import make_layer
+    #                                             # but CenterNet-104.py need CenterNet-104.py make_hg_layer()
+    #                 make_hg_layer_revr=make_hg_layer_revr,# from .utils import make_layer_revr
+    #                 make_pool_layer=make_pool_layer, # from kp_utils import make_pool_layer
+    #                 make_unpool_layer=make_unpool_layer, # from kp_utils import make_unpool_layer
+    #                 make_merge_layer=make_merge_layer # from kp_utils import make_merge_layer
+    #             )
+    # since kp_module is recursive, # dims    = [256, 256, 384, 384, 384, 512]
+    #     #                 # modules = [2, 2, 2, 2, 2, 4]
+    # so for the first kp_module,residual block are all at 256 in_channels
+    #            sencond                                from 256 input to 384 output channels
+    #            third，fourth                          input output channels are both 384
+    #            fifth                                  from input 384 to output 512
     def __init__(
         self, n, dims, modules, layer=residual,
         make_up_layer=make_layer, make_low_layer=make_layer,
@@ -28,23 +51,41 @@ class kp_module(nn.Module):
 
         self.n   = n
 
-        curr_mod = modules[0]
-        next_mod = modules[1]
+        # modules = [2, 2, 2, 2, 2, 4]
+        curr_mod = modules[0] # 2
+        next_mod = modules[1] # 2
 
-        curr_dim = dims[0]
-        next_dim = dims[1]
+        # dims    = [256, 256, 384, 384, 384, 512]
+        curr_dim = dims[0]  # 256
+        next_dim = dims[1]  # 256
 
-        self.up1  = make_up_layer(
-            3, curr_dim, curr_dim, curr_mod, 
+        # train.py :      nnet = NetworkFactory
+        # NetworkFactory inherited from kp
+        # kp contains two kp_module part
+        #
+        self.up1  = make_up_layer(# from .utils import make_layer
+            3, curr_dim, curr_dim, curr_mod,
+            #  256       256       2
             layer=layer, **kwargs
-        )  
+            #  residual
+        )  #a nn.Sequential with two residual blocks whose kernel-sizes are (3,3) and input,output channels are 256
+
         self.max1 = make_pool_layer(curr_dim)
-        self.low1 = make_hg_layer(
+        # # from kp_utils import make_pool_layer, 256
+        # has nothing to do with dim
+        # this self.max1 is just a nn.MaxPool2d(kernel_size=2,stride=2) layer
+
+
+
+        self.low1 = make_hg_layer(# CenterNet-104.py make_hg_layer()
             3, curr_dim, next_dim, curr_mod,
+            #  256       256       2
             layer=layer, **kwargs
-        )
+            #  residual
+        )# two residual blocks with kernel 3,and input, output channels are 256
+
         self.low2 = kp_module(
-            n - 1, dims[1:], modules[1:], layer=layer, 
+            n - 1, dims[1:], modules[1:], layer=layer,
             make_up_layer=make_up_layer, 
             make_low_layer=make_low_layer,
             make_hg_layer=make_hg_layer,
@@ -55,25 +96,36 @@ class kp_module(nn.Module):
             **kwargs
         ) if self.n > 1 else \
         make_low_layer(
+            # # from .utils import make_layer
             3, next_dim, next_dim, next_mod,
+            #   256         256     2
             layer=layer, **kwargs
+            # resisual
         )
+        # n = 5 so for n = 4, n = 3, n = 2 kp_module will have recursive kp_modules as kp_module.low2
+        # for n = 1  kp_module.low2 is just two residual blocks with kernel 3,and input, output channels are 256
+
         self.low3 = make_hg_layer_revr(
+            # # from .utils import make_layer_revr
             3, next_dim, curr_dim, curr_mod,
             layer=layer, **kwargs
-        )
+        )# so the output of make_layer_revr is just two residual blocks with the kernel size of 3, input , output channels 256
         self.up2  = make_unpool_layer(curr_dim)
+        # # from kp_utils import make_unpool_layer  , 256
+        # has nothing to do with dim, make_unpool_layer is just a nn.Upsample(scale_factor = 2)
 
         self.merge = make_merge_layer(curr_dim)
+        # # from kp_utils import make_merge_layer
+        # it is just a function to add two tensors together
 
     def forward(self, x):
-        up1  = self.up1(x)
-        max1 = self.max1(x)
-        low1 = self.low1(max1)
-        low2 = self.low2(low1)
-        low3 = self.low3(low2)
-        up2  = self.up2(low3)
-        return self.merge(up1, up2)
+        up1  = self.up1(x) # two residual blocks channel must stay the same since use same channel : curr_dim and curr_dim
+        max1 = self.max1(x) # downsample
+        low1 = self.low1(max1) # two block resisual blocks, channels may be more, because use curr_dim and next_dim
+        low2 = self.low2(low1) # recursive kp_modules
+        low3 = self.low3(low2) # two residual blocks and the channels may become less ,because use next_dim and curr_dim
+        up2  = self.up2(low3) # upsampling
+        return self.merge(up1, up2) # add up
 
 class kp(nn.Module):
     # nn.Module --> kp --> CenterNet-104.py class: model
@@ -113,6 +165,7 @@ class kp(nn.Module):
         self.output_size        = self._db.configs["output_sizes"][0][0] # [128,128] in CenterNet-104.json
 
         curr_dim = dims[0] # 256
+        #  dims = [256, 256, 384, 384, 384, 512]
 
 
         self.pre = nn.Sequential(
@@ -125,22 +178,32 @@ class kp(nn.Module):
             residual(3, 128, 256, stride=2)
             # residual(k, inp_dim, out_dim, stride=1, with_bn=True)
             # residual = conv + bn + relu + conv + bn + add + relu
-        ) if pre is None else pre
+        ) if pre is None else pre# in the arguments pre is None
+        # self.pre is a block of convBR + resblock
 
         self.kps  = nn.ModuleList([
             kp_module(
                 n, dims, modules, layer=kp_layer,
-                make_up_layer=make_up_layer,
-                make_low_layer=make_low_layer,
-                make_hg_layer=make_hg_layer,
-                make_hg_layer_revr=make_hg_layer_revr,
-                make_pool_layer=make_pool_layer,
-                make_unpool_layer=make_unpool_layer,
-                make_merge_layer=make_merge_layer
+                # n =5
+                # dims    = [256, 256, 384, 384, 384, 512]
+                # modules = [2, 2, 2, 2, 2, 4]
+                # kp_layer is resisual as default argument
+                make_up_layer=make_up_layer,# from .utils import make_layer
+                make_low_layer=make_low_layer,# from .utils import make_layer
+                make_hg_layer=make_hg_layer,# default is  .utils import make_layer
+                                            # but CenterNet-104.py need CenterNet-104.py make_hg_layer()
+                make_hg_layer_revr=make_hg_layer_revr,# from .utils import make_layer_revr
+                make_pool_layer=make_pool_layer, # from kp_utils import make_pool_layer
+                make_unpool_layer=make_unpool_layer, # from kp_utils import make_unpool_layer
+                make_merge_layer=make_merge_layer # from kp_utils import make_merge_layer
             ) for _ in range(nstack)    # nstack = 2
         ])
+        # self.kps is two blocks of kp_module
+
         self.cnvs = nn.ModuleList([
             make_cnv_layer(curr_dim, cnv_dim) for _ in range(nstack)
+            # nstack = 2
+            # from .kp_utils import make_cnv_layer
         ])
 
         self.tl_cnvs = nn.ModuleList([

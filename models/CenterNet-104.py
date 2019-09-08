@@ -5,6 +5,7 @@ from .py_utils import kp, AELoss, _neg_loss, convolution, residual
 from .py_utils import TopPool, BottomPool, LeftPool, RightPool
 
 class pool(nn.Module):
+
     def __init__(self, dim, pool1, pool2):
         super(pool, self).__init__()
         self.p1_conv1 = convolution(3, dim, 128)
@@ -123,6 +124,13 @@ def make_hg_layer(kernel, dim0, dim1, mod, layer=convolution, **kwargs):
     layers  = [layer(kernel, dim0, dim1, stride=2)]
     layers += [layer(kernel, dim1, dim1) for _ in range(mod - 1)]
     return nn.Sequential(*layers)
+# first call
+# train.py :      nnet = NetworkFactory
+# NetworkFactory inherited from kp
+# kp contains two kp_module part
+# kp_module.low1 is the output of make_hg_layer() function
+# args: 3,256,256,2,residual
+# so the output is just two residual blocks with kernel 3,and input, output channels are 256
 
 class model(kp):
     def __init__(self, db):
