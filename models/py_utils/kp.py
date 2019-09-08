@@ -147,11 +147,11 @@ class kp(nn.Module):
         #         modules = [2, 2, 2, 2, 2, 4]
         #         out_dim = 80
         #             db, n, 2, dims, modules, out_dim,
-        #             make_tl_layer=make_tl_layer,
-        #             make_br_layer=make_br_layer,
-        #             make_ct_layer=make_ct_layer,
-        #             make_pool_layer=make_pool_layer,
-        #             make_hg_layer=make_hg_layer,
+        #             make_tl_layer=make_tl_layer, # CenterNet-104.py make_tl_layer not the one in kp_utils.py
+        #             make_br_layer=make_br_layer, # CenterNet-104.py make_br_layer not the one in kp_utils.py
+        #             make_ct_layer=make_ct_layer, # CenterNet-104.py make_ct_layer not the one in kp_utils.py
+        #             make_pool_layer=make_pool_layer, # CenterNet-104.py make_pool_layer not the one in kp_utils.py
+        #             make_hg_layer=make_hg_layer, # CenterNet-104.py make_hg_layer not the one in kp_utils.py
         #             kp_layer=residual, cnv_dim=256
         super(kp, self).__init__()
 
@@ -204,17 +204,24 @@ class kp(nn.Module):
             make_cnv_layer(curr_dim, cnv_dim) for _ in range(nstack)
             # nstack = 2
             # from .kp_utils import make_cnv_layer
+            # make_cnv_layer is just conv+bn+relu
+            # and nstack is 2
+            # so two conv+bn+ relu blocks is self.cns
         ])
 
         self.tl_cnvs = nn.ModuleList([
             make_tl_layer(cnv_dim) for _ in range(nstack)
+            # the make_tl_layer function in CenterNet-104.py
+            # cnv_dim = 256
         ])
         self.br_cnvs = nn.ModuleList([
             make_br_layer(cnv_dim) for _ in range(nstack)
+            # from .kp_utils import make_tl_layer, make_br_layer, make_kp_layer, make_ct_layer
         ])
 
         self.ct_cnvs = nn.ModuleList([
             make_ct_layer(cnv_dim) for _ in range(nstack)
+            # from .kp_utils import make_tl_layer, make_br_layer, make_kp_layer, make_ct_layer
         ])
 
         ## keypoint heatmaps

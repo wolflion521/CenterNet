@@ -8,6 +8,15 @@ sys.path.append(os.path.join(os.path.dirname(__file__),'dist/cpools-0.0.0-py3.6-
 import top_pool, bottom_pool, left_pool, right_pool
 
 class TopPoolFunction(Function):
+    # first call
+    # train.py :      nnet = NetworkFactory
+    # NetworkFactory inherited from kp
+    # kp.tl_cnvs is the output of make_tl_layer(256)
+    # tl_pool(256)
+    # go to pool(256,TopPool,LeftPool)
+    # go to TopPool
+    # go to TopPoolFunction
+    # go to top_pool in cpools/src/setup.py
     @staticmethod
     def forward(ctx, input):
         output = top_pool.forward(input)[0]
@@ -62,6 +71,14 @@ class RightPoolFunction(Function):
 class TopPool(nn.Module):
     def forward(self, x):
         return TopPoolFunction.apply(x)
+    # first call
+    # train.py :      nnet = NetworkFactory
+    # NetworkFactory inherited from kp
+    # kp.tl_cnvs is the output of make_tl_layer(256)
+    # tl_pool(256)
+    # go to pool(256,TopPool,LeftPool)
+    # go to TopPool
+    # go to TopPoolFunction
 
 class BottomPool(nn.Module):
     def forward(self, x):

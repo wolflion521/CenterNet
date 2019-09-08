@@ -38,7 +38,10 @@ def make_inter_layer(dim):
 def make_cnv_layer(inp_dim, out_dim):
     return convolution(3, inp_dim, out_dim)
 # first call
-#
+# train.py :      nnet = NetworkFactory
+# NetworkFactory inherited from kp
+# kp contains kp.cnvs
+# this function is just conv + bn + relu
 
 def _gather_feat(feat, ind, mask=None):
     dim  = feat.size(2)

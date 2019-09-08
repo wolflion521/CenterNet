@@ -5,7 +5,13 @@ from .py_utils import kp, AELoss, _neg_loss, convolution, residual
 from .py_utils import TopPool, BottomPool, LeftPool, RightPool
 
 class pool(nn.Module):
-
+    # first call
+    # train.py :      nnet = NetworkFactory
+    # NetworkFactory inherited from kp
+    # kp.tl_cnvs is the output of make_tl_layer(256)
+    # tl_pool(256)
+    # go to pool(256,TopPool,LeftPool)
+    # go to TopPool
     def __init__(self, dim, pool1, pool2):
         super(pool, self).__init__()
         self.p1_conv1 = convolution(3, dim, 128)
@@ -99,6 +105,12 @@ class pool_cross(nn.Module):
 class tl_pool(pool):
     def __init__(self, dim):
         super(tl_pool, self).__init__(dim, TopPool, LeftPool)
+# first call
+# train.py :      nnet = NetworkFactory
+# NetworkFactory inherited from kp
+# kp.tl_cnvs is the output of make_tl_layer(256)
+# tl_pool(256)
+# go to pool(256,TopPool,LeftPool)
 
 class br_pool(pool):
     def __init__(self, dim):
@@ -110,6 +122,11 @@ class center_pool(pool_cross):
 
 def make_tl_layer(dim):
     return tl_pool(dim)
+# first call
+# train.py :      nnet = NetworkFactory
+# NetworkFactory inherited from kp
+# kp.tl_cnvs is the output of make_tl_layer(256)
+#
 
 def make_br_layer(dim):
     return br_pool(dim)
