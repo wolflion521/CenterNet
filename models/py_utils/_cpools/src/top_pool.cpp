@@ -179,6 +179,39 @@ std::vector<at::Tensor> top_pool_backward(
         because of unsqueeze , grad_output_temp should be batch,channel,1,width
         */
         output.scatter_add_(2, un_max_ind, grad_output_temp);
+        //对第2个维度执行加法，un_max_ind 是index 而 grad_output_temp则是src,
+
+        /* torch.scatter_(dim, index, src)
+
+        核心操作：
+
+        self[ index[i][j][k] ][ j ][ k ] = src[i][j][k]  # if dim == 0
+
+        self[ i ][ index[i][j][k] ][ k ] = src[i][j][k]  # if dim == 1
+
+        self[ i ][ j ][ index[i][j][k] ] = src[i][j][k]  # if dim == 2
+
+        这个就是对于src（或者说input）指定位置上的值，去分配给output对应索引位置，根据是index，所以其实把src放在左边更容易理解，官方给的例子如下：
+        ————————————————
+        版权声明：本文为CSDN博主「Teeyohuang」的原创文章，遵循 CC 4.0 BY-SA 版权协议，转载请附上原文出处链接及本声明。
+        原文链接：https://blog.csdn.net/Teeyohuang/article/details/82186666
+        scatter and gather are two inverse functions in pytorch
+        x = torch.rand(2, 5)
+        >>> x
+
+         0.4319  0.6500  0.4080  0.8760  0.2355
+         0.2609  0.4711  0.8486  0.8573  0.1029
+        [torch.FloatTensor of size 2x5]
+
+        >>> torch.zeros(3, 5).scatter_(0, torch.LongTensor([[0, 1, 2, 0, 0], [2, 0, 0, 1, 2]]), x)
+
+         0.4319  0.4711  0.8486  0.8760  0.2355
+         0.0000  0.6500  0.0000  0.8573  0.0000
+         0.2609  0.0000  0.4080  0.0000  0.1029
+        [torch.FloatTensor of size 3x5]
+        ————————————————
+        版权声明：本文为CSDN博主「Teeyohuang」的原创文章，遵循 CC 4.0 BY-SA 版权协议，转载请附上原文出处链接及本声明。
+        原文链接：https://blog.csdn.net/Teeyohuang/article/details/82186666*/
     }
 
     return {

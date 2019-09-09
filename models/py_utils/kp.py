@@ -199,6 +199,7 @@ class kp(nn.Module):
             ) for _ in range(nstack)    # nstack = 2
         ])
         # self.kps is two blocks of kp_module
+        # kp_module is recursive --resisual + dawnsample and upsampling
 
         self.cnvs = nn.ModuleList([
             make_cnv_layer(curr_dim, cnv_dim) for _ in range(nstack)
@@ -206,28 +207,43 @@ class kp(nn.Module):
             # from .kp_utils import make_cnv_layer
             # make_cnv_layer is just conv+bn+relu
             # and nstack is 2
-            # so two conv+bn+ relu blocks is self.cns
+            # so two conv+bn+ relu blocks is self.cnvs
         ])
 
         self.tl_cnvs = nn.ModuleList([
             make_tl_layer(cnv_dim) for _ in range(nstack)
             # the make_tl_layer function in CenterNet-104.py
             # cnv_dim = 256
+            # x--> conv+bn+relu-->leftpool to see largest in row---->
+            #                                                         + ------>conv ----> toppool--
+            #  --> conv+bn+relu------------------------------------->                              |
+            #                                                                                      + --> conv+bn---+ relu-->conv+bn+relu
+            #  --> conv+bn+relu-->toppool to see largest in row---->                               |               |
+            #                                                         + ------>conv ----> leftpool--               |
+            #  --> conv+bn+relu------------------------------------->                                              |
+            #                                                                                                      |
+            #  --> conv+bn-----------------------------------------------------------------------------------------
+            # since nstack = 2 , so two tl_cnvs stack together
         ])
         self.br_cnvs = nn.ModuleList([
             make_br_layer(cnv_dim) for _ in range(nstack)
-            # from .kp_utils import make_tl_layer, make_br_layer, make_kp_layer, make_ct_layer
+            # similar to above
         ])
 
         self.ct_cnvs = nn.ModuleList([
             make_ct_layer(cnv_dim) for _ in range(nstack)
-            # from .kp_utils import make_tl_layer, make_br_layer, make_kp_layer, make_ct_layer
+            # the make_ct_layer function in CenterNet-104.py
         ])
 
         ## keypoint heatmaps
+        # make_heat_layer means   from .kp_utils make_kp_layer,
         self.tl_heats = nn.ModuleList([
             make_heat_layer(cnv_dim, curr_dim, out_dim) for _ in range(nstack)
         ])
+        # cnv_dim = 256 , curr_dim = 256, out_dim = 80
+        # seems like to build 80 heatmaps,each map for a class
+        # x --> conv+relu+conv--> conv+relu+conv
+
         self.br_heats = nn.ModuleList([
             make_heat_layer(cnv_dim, curr_dim, out_dim) for _ in range(nstack)
         ])
@@ -236,7 +252,10 @@ class kp(nn.Module):
             make_heat_layer(cnv_dim, curr_dim, out_dim) for _ in range(nstack)
         ])
 
-        ## tags
+        ## tags   make_tag_layer are still use from .kp_utils import make_kp_layer
+        # tags differences with heatmaps:
+        # tags only have two, and outdim = 1
+        # heatmap have three , and out_dim = 80
         self.tl_tags  = nn.ModuleList([
             make_tag_layer(cnv_dim, curr_dim, 1) for _ in range(nstack)
         ])
@@ -248,10 +267,12 @@ class kp(nn.Module):
             tl_heat[-1].bias.data.fill_(-2.19)
             br_heat[-1].bias.data.fill_(-2.19)
             ct_heat[-1].bias.data.fill_(-2.19)
+        # bias initialization
 
         self.inters = nn.ModuleList([
             make_inter_layer(curr_dim) for _ in range(nstack - 1)
         ])
+        # from .kp_utils import make_inter_layer, is just one residual block
 
         self.inters_ = nn.ModuleList([
             nn.Sequential(
@@ -275,16 +296,25 @@ class kp(nn.Module):
         self.ct_regrs = nn.ModuleList([
             make_regr_layer(cnv_dim, curr_dim, 2) for _ in range(nstack)
         ])
+        # make_regr_layer are still make_kp_layer
+        # x --> conv+relu+conv--> conv+relu+conv
 
         self.relu = nn.ReLU(inplace=True)
 
     def _train(self, *xs):
+        # If the form *identifier is present, it is initialized to a tuple
+        # receiving any excess positional parameters, defaulting to the empty
+        # tuple. If the form **identifier is present, it is initialized to a new
+        # dictionary receiving any excess keyword arguments, defaulting to a new
+        # empty dictionary.
+        # 所以这里*xs只是为了说明xs是一个tuple不然我们得把tuple拆开了传进来，书写不方便
         image      = xs[0]
         tl_inds    = xs[1]
         br_inds    = xs[2]
         ct_inds    = xs[3]
 
         inter      = self.pre(image)
+        # image---> 卷积核为7的卷基层+bn+re-->residual
         outs       = []
 
         layers = zip(
@@ -305,36 +335,58 @@ class kp(nn.Module):
             tl_regr_,  br_regr_ = layer[10:12]
             ct_regr_         = layer[12]
 
-            kp  = kp_(inter)
-            cnv = cnv_(kp)
+            kp  = kp_(inter)# # kp_module is recursive --resisual + dawnsample and upsampling
+            cnv = cnv_(kp) # two conv+bn+ relu blocks is self.cnvs
 
             tl_cnv = tl_cnv_(cnv)
             br_cnv = br_cnv_(cnv)
+            # x--> conv+bn+relu-->leftpool to see largest in row---->
+            #                                                         + ------>conv ----> toppool--
+            #  --> conv+bn+relu------------------------------------->                              |
+            #                                                                                      + --> conv+bn---+ relu-->conv+bn+relu
+            #  --> conv+bn+relu-->toppool to see largest in row---->                               |               |
+            #                                                         + ------>conv ----> leftpool--               |
+            #  --> conv+bn+relu------------------------------------->                                              |
+            #                                                                                                      |
+            #  --> conv+bn-----------------------------------------------------------------------------------------
+            # since nstack = 2 , so two tl_cnvs stack together
+            # br_cnv are the same
+            #
             ct_cnv = ct_cnv_(cnv)
+
+            #         # x--> conv+bn+relu--> top_pool-->BottomPool--
+            #         #                                             +-->conv+bn----
+            #         #  --> conv+bn+relu--> leftpool-->rightpool---               +--->relu---->conv+bn+relu
+            #         #  --> conv+bn-----------------------------------------------
 
             tl_heat, br_heat, ct_heat = tl_heat_(tl_cnv), br_heat_(br_cnv), ct_heat_(ct_cnv)
             tl_tag, br_tag        = tl_tag_(tl_cnv),  br_tag_(br_cnv)
             tl_regr, br_regr, ct_regr = tl_regr_(tl_cnv), br_regr_(br_cnv), ct_regr_(ct_cnv)
+            # heat,tag,regr all use make_kp_layer
+            # # x --> conv+relu+conv--> conv+relu+conv
 
             tl_tag  = _tranpose_and_gather_feat(tl_tag, tl_inds)
             br_tag  = _tranpose_and_gather_feat(br_tag, br_inds)
             tl_regr = _tranpose_and_gather_feat(tl_regr, tl_inds)
             br_regr = _tranpose_and_gather_feat(br_regr, br_inds)
             ct_regr = _tranpose_and_gather_feat(ct_regr, ct_inds)
-
+            # _tranpose_and_gather_feat first reshape the first input from h*w  to a vector
+            # then get the relevant value use ind
             outs += [tl_heat, br_heat, ct_heat, tl_tag, br_tag, tl_regr, br_regr, ct_regr]
+            # this operation is a list, not add them element by element
 
             if ind < self.nstack - 1:
                 inter = self.inters_[ind](inter) + self.cnvs_[ind](cnv)
                 inter = self.relu(inter)
                 inter = self.inters[ind](inter)
+                # conv+bn+relu+conv+conv+bn+relu
 
         return outs
 
     def _test(self, *xs, **kwargs):
         image = xs[0]
 
-        inter = self.pre(image)
+        inter = self.pre(image)# kernel size 7 conv+bn+relu
 
         outs          = []
 
@@ -384,6 +436,7 @@ class kp(nn.Module):
         return self._test(*xs, **kwargs)
 
 class AELoss(nn.Module):
+    # loss = AELoss(pull_weight=1e-1, push_weight=1e-1, focal_loss=_neg_loss)
     def __init__(self, pull_weight=1, push_weight=1, regr_weight=1, focal_loss=_neg_loss):
         super(AELoss, self).__init__()
 
@@ -393,6 +446,7 @@ class AELoss(nn.Module):
         self.focal_loss  = focal_loss
         self.ae_loss     = _ae_loss
         self.regr_loss   = _regr_loss
+        # from .kp_utils import _sigmoid, _ae_loss, _regr_loss, _neg_loss
 
     def forward(self, outs, targets):
         stride = 8
@@ -405,6 +459,9 @@ class AELoss(nn.Module):
         tl_regrs = outs[5::stride]
         br_regrs = outs[6::stride]
         ct_regrs = outs[7::stride]
+        # 语法是 seq[start:end:step]
+        # range(10)[::2]
+        # [0, 2, 4, 6, 8]
 
         gt_tl_heat = targets[0]
         gt_br_heat = targets[1]
@@ -420,10 +477,15 @@ class AELoss(nn.Module):
         tl_heats = [_sigmoid(t) for t in tl_heats]
         br_heats = [_sigmoid(b) for b in br_heats]
         ct_heats = [_sigmoid(c) for c in ct_heats]
+        # heatmaps need sigmoid to make it more separate from 0 to 1 so the heatmap peak can outstanding
 
         focal_loss += self.focal_loss(tl_heats, gt_tl_heat)
         focal_loss += self.focal_loss(br_heats, gt_br_heat)
         focal_loss += self.focal_loss(ct_heats, gt_ct_heat)
+        # focal_loss is neg_loss function in kp_utils.py
+        # it separate ground truth into 1 and less than 1, so here only the isolated ground truth point is 1,
+        # other palce in the ground truth heatmap, even we use gaussian distribution, now they are damp to 0
+        # set as neg_ind
 
         # tag loss
         pull_loss = 0

@@ -56,6 +56,10 @@ class NetworkFactory(object):
         # model inherit kp
         #
         self.loss    = nnet_module.loss
+        # CenterNet-104.py  loss
+        # loss = AELoss(pull_weight=1e-1, push_weight=1e-1, focal_loss=_neg_loss)
+        # AELoss in kp.py
+
         self.network = Network(self.model, self.loss)
         self.network = DataParallel(self.network, chunk_sizes=system_configs.chunk_sizes).cuda()
 

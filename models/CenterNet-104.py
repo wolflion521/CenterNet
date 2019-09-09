@@ -10,9 +10,13 @@ class pool(nn.Module):
     # NetworkFactory inherited from kp
     # kp.tl_cnvs is the output of make_tl_layer(256)
     # tl_pool(256)
-    # go to pool(256,TopPool,LeftPool)
+    # go to pool(256,TopPool,LeftPool) in CenterNet-104.py
+    # go to TopPool  defined in in py_utils/cpools/__init__.py
     # go to TopPool
     def __init__(self, dim, pool1, pool2):
+        # first called pool1 is top_pool to make the heatmap
+        # become a vector show that where is the largest value in each col
+        # pool2 is a leftpool , it count from the right to the left to see where is the largest value in each row
         super(pool, self).__init__()
         self.p1_conv1 = convolution(3, dim, 128)
         self.p2_conv1 = convolution(3, dim, 128)
@@ -42,6 +46,10 @@ class pool(nn.Module):
         P1_look_conv = self.P1_look_conv(p1_conv1+look_right)
         pool1        = self.pool1(P1_look_conv)
 
+        # x--> conv+bn+relu-->leftpool to see largest in row---->
+        #                                                         + ------>conv ----> toppool
+        #  --> conv+bn+relu------------------------------------->
+
         # pool 2
         look_conv2   = self.look_conv2(x)
         p2_conv1 = self.p2_conv1(x)
@@ -49,9 +57,25 @@ class pool(nn.Module):
         P2_look_conv = self.P2_look_conv(p2_conv1+look_down)
         pool2    = self.pool2(P2_look_conv)
 
+        # x--> conv+bn+relu-->toppool to see largest in row---->
+        #                                                         + ------>conv ----> leftpool
+        #  --> conv+bn+relu------------------------------------->
+
+        # the difference between pool 1 and pool 2 is the order apply toppool or leftpool first
+
         # pool 1 + pool 2
         p_conv1 = self.p_conv1(pool1 + pool2)
         p_bn1   = self.p_bn1(p_conv1)
+        # x--> conv+bn+relu-->leftpool to see largest in row---->
+        #                                                         + ------>conv ----> toppool--
+        #  --> conv+bn+relu------------------------------------->                              |
+        #                                                                                      + --> conv+bn---+ relu-->conv+bn+relu
+        #  --> conv+bn+relu-->toppool to see largest in row---->                               |               |
+        #                                                         + ------>conv ----> leftpool--               |
+        #  --> conv+bn+relu------------------------------------->                                              |
+        #                                                                                                      |
+        #  --> conv+bn-----------------------------------------------------------------------------------------
+
 
         conv1 = self.conv1(x)
         bn1   = self.bn1(conv1)
@@ -59,6 +83,7 @@ class pool(nn.Module):
 
         conv2 = self.conv2(relu1)
         return conv2
+
 
 class pool_cross(nn.Module):
     def __init__(self, dim, pool1, pool2, pool3, pool4):
@@ -86,10 +111,15 @@ class pool_cross(nn.Module):
         pool1    = self.pool1(p1_conv1)
         pool1    = self.pool3(pool1)
 
+
         # pool 2
         p2_conv1 = self.p2_conv1(x)
         pool2    = self.pool2(p2_conv1)
         pool2    = self.pool4(pool2)
+        # x--> conv+bn+relu--> top_pool-->BottomPool--
+        #                                             +-->conv+bn----
+        #  --> conv+bn+relu--> leftpool-->rightpool---               +--->relu---->conv+bn+relu
+        #  --> conv+bn-----------------------------------------------
 
         # pool 1 + pool 2
         p_conv1 = self.p_conv1(pool1 + pool2)
@@ -109,8 +139,19 @@ class tl_pool(pool):
 # train.py :      nnet = NetworkFactory
 # NetworkFactory inherited from kp
 # kp.tl_cnvs is the output of make_tl_layer(256)
-# tl_pool(256)
-# go to pool(256,TopPool,LeftPool)
+# tl_pool(256) in CenterNet-104.py
+# go to pool(256,TopPool,LeftPool) in in CenterNet-104.py
+
+        # x--> conv+bn+relu-->leftpool to see largest in row---->
+        #                                                         + ------>conv ----> toppool--
+        #  --> conv+bn+relu------------------------------------->                              |
+        #                                                                                      + --> conv+bn---+ relu-->conv+bn+relu
+        #  --> conv+bn+relu-->toppool to see largest in row---->                               |               |
+        #                                                         + ------>conv ----> leftpool--               |
+        #  --> conv+bn+relu------------------------------------->                                              |
+        #                                                                                                      |
+        #  --> conv+bn-----------------------------------------------------------------------------------------
+
 
 class br_pool(pool):
     def __init__(self, dim):
@@ -126,7 +167,7 @@ def make_tl_layer(dim):
 # train.py :      nnet = NetworkFactory
 # NetworkFactory inherited from kp
 # kp.tl_cnvs is the output of make_tl_layer(256)
-#
+# tl_pool(256) in CenterNet-104.py
 
 def make_br_layer(dim):
     return br_pool(dim)
